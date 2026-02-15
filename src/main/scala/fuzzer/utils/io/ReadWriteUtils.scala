@@ -6,19 +6,27 @@ import fuzzer.core.global.FuzzerConfig
 import java.io.{File, FileWriter}
 import scala.sys.process._
 
+import org.apache.commons.io.FileUtils
+
 object ReadWriteUtils {
 
+//  def deleteDir(path: String): Unit = {
+//    val dir = new File(path)
+//    if (dir.exists()) {
+//      val cmd = s"rm -rf ${path}"
+//      val exitCode = cmd.!
+//      if (exitCode != 0) {
+//        println(s"Failed to delete $path")
+//      }
+//    }
+//  }
+
   def deleteDir(path: String): Unit = {
-    val dir = new File(path)
-    if (dir.exists()) {
-      val cmd = s"rm -rf ${path}"
-      val exitCode = cmd.!
-      if (exitCode != 0) {
-        println(s"Failed to delete $path")
-      }
+    val directory = new File(path)
+    if (directory.exists()) {
+      FileUtils.deleteDirectory(directory)
     }
   }
-
 
   def createDir(path: String): Unit = {
     val dir = new File(path)
