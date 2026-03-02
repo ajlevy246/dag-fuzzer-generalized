@@ -7,11 +7,12 @@ import fuzzer.core.graph.{DAGParser, DFOperator, Graph, Node}
 import fuzzer.core.interfaces.{CodeExecutor, CodeGenerator, DataAdapter, ExecutionResult}
 import fuzzer.data.tables.TableMetadata
 import fuzzer.utils.generation.dag.DAGGenUtils.generateRandomInvertedBinaryTreeDAG
+import fuzzer.utils.generation.dag.DFGSerializer
 import fuzzer.utils.io.ReadWriteUtils
 import fuzzer.utils.io.ReadWriteUtils.{prettyPrintStats, writeLiveStats}
 import fuzzer.utils.random.Random
 import org.yaml.snakeyaml.Yaml
-import play.api.libs.json.{JsObject, JsValue}
+import play.api.libs.json.{JsObject, JsValue, Json}
 
 import scala.io.StdIn
 import scala.collection.mutable
@@ -122,16 +123,16 @@ class FuzzerEngine(
                              spec: JsValue,
                              dag2SourceFunc: Graph[DFOperator] => SourceCode,
                              tables: Seq[TableMetadata]
-                           ): SourceCode = {
+                           ): (SourceCode, Graph[DFOperator]) = {
     val (isInvalid, message) = isInvalidDFG(dag)
     if (isInvalid) {
       throw new ImpossibleDFGException(s"Impossible to convert DAG to DFG. $message")
     }
 
-
+    // Need to return generated DFG in addition.
     val dfg = constructDFG(dag, spec, tables)
     val generatedSource = dfg.generateCode(dag2SourceFunc)
-    generatedSource
+    (generatedSource, dfg)
   }
 
   private def createDAGIteratorInternal(config: FuzzerConfig): Iterator[(Graph[DFOperator], String)] = {
@@ -480,7 +481,7 @@ class FuzzerEngine(
             // val selectedTables = Random.shuffle(allTables).take(dag.getSourceNodes.length).toList
             // --- Sampling tables with replacement ---
             val selectedTables = (1 to dag.getSourceNodes.length).map(_ => allTables(Random.nextInt(allTables.length))).toList
-            val sourceCode = generateSingleProgram(dag, spec, codeGenerator.getDag2CodeFunc, selectedTables)
+            val (sourceCode, dfg) = generateSingleProgram(dag, spec, codeGenerator.getDag2CodeFunc, selectedTables)
             println(s"-> EXECUTING g_${stats.getGenerated}-a_${stats.getAttempts}...")
 
             if(config.debugMode) {
@@ -533,6 +534,13 @@ class FuzzerEngine(
             val writer = new FileWriter(outFile)
             writer.write(results.combinedSourceWithResults+s"\n\n//Optimizer Branch Coverage: $ruleBranchesCovered")
             writer.close()
+
+            // Write DFG along with source
+            val dfgFileName = outFileName.stripSuffix(config.outExt) + ".dfg.json"
+            val dfgFile = new File(resultSubDir, dfgFileName)
+            val dfgWriter = new FileWriter(dfgFile)
+            dfgWriter.write(Json.prettyPrint(DFGSerializer.serialize(dfg)))
+            dfgWriter.close()
 
             if (stats.getGenerated % config.updateLiveStatsAfter == 0) {
               writeLiveStats(config, stats, startTime)
