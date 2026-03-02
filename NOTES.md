@@ -93,3 +93,50 @@ The structure of a generated DFG is as a `Graph[DFOperator]` object. The `Graph`
 In addition, some data about each node must be preservered. Each `DFOperator` node has a `varName` that must be serialized, and source nodes holds a `state` attribute to a bound table name that must also be saved. 
 
 Since `TableMetadata` may change during a test run, e.g. when `setIdentifier` is called to alias a table, I'm not sure what to serialize. For now, using `originalIdentifier`.
+
+### Saving to disk
+1. Updating `generateSingleProgram` to return not only the generated source code but also the generated DFG: `Graph[DFOperator]` in addition.
+2. Updating `processSingleProgram` to write the DFG serialization in addition to the source code.
+
+### Serialization Results
+Initial result looks like:
+```json
+{
+  "nodes" : [ {
+    "id" : "node_0",
+    "numId" : 0,
+    "operator" : "select",
+    "role" : "sink"
+  }, {
+    "id" : "node_1",
+    "numId" : 1,
+    "operator" : "join",
+    "role" : "internal"
+  }, {
+    "id" : "node_10",
+    "numId" : 4,
+    "operator" : "groupBy",
+    "role" : "internal"
+  }, {
+    "id" : "node_12",
+    "numId" : 5,
+    "operator" : "spark.table",
+    "role" : "source",
+    "table" : "web_site_node_12"
+  }, ... ],
+  "edges" : [ {
+    "from" : "node_1",
+    "to" : "node_0"
+  }, {
+    "from" : "node_10",
+    "to" : "node_6"
+  }, {
+    "from" : "node_11",
+    "to" : "node_6"
+  }, {
+    "from" : "node_12",
+    "to" : "node_7"
+  }, ... ]
+}
+```
+> Questions: What is the aliasing for table names? Why do they reference specific nodes? Why does `numId` (sourced from `DFOperator.id`) reference the depth of the node?
