@@ -45,6 +45,8 @@ This file serves as a place to take notes as I setup and contribute to DAGger.
 > ```bash
 > SPARK_LOCAL_IP=127.0.0.1                                           \
 > spark-submit                                                       \
+>     --driver-memory 8g                                            \
+>     --conf spark.executor.memory=8g                                \
 >     --class fuzzer.MainFuzzer                                      \
 >     --master local[*]                                              \
 >     target/scala-2.13/DAGFuzzerBetter-assembly-0.1.0-SNAPSHOT.jar  \
@@ -81,3 +83,13 @@ This file serves as a place to take notes as I setup and contribute to DAGger.
 
 #### 4. Polars
 > Not yet tried.
+
+## DFG Serialization
+To aid in automatic minimization of interesting examples, we first need a method to save and load the graphs in question to disk as they are generated. I'm using the Play API to serialize DFG's into a JSON format. 
+
+### Graph Format
+The structure of a generated DFG is as a `Graph[DFOperator]` object. The `Graph` object stores a set of mappings for children, parents, and nodes themselves. Only the children and node mappings are necessary for reconstructing the entire graph, so only they will be serialized.
+
+In addition, some data about each node must be preservered. Each `DFOperator` node has a `varName` that must be serialized, and source nodes holds a `state` attribute to a bound table name that must also be saved. 
+
+Since `TableMetadata` may change during a test run, e.g. when `setIdentifier` is called to alias a table, I'm not sure what to serialize. For now, using `originalIdentifier`.
