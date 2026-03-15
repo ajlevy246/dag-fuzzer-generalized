@@ -8,6 +8,7 @@ class DFOperator(val name: String, val id: Int) {
   var state: TableMetadata = null
   var varName: String = ""
   var stateView: Map[String, TableMetadata] = Map()
+  var params: Map[String, String] = Map() // Populated by a user's codegen implementation. Consumed by auto-mwe to reconstruct source.  
 
   def this(id: Int) {
     this(null, id)
