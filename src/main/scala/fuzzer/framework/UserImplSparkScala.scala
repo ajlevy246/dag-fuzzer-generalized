@@ -38,6 +38,19 @@ object UserImplSparkScala {
     preloadedUDFDefinition
   }
 
+  /**
+   * Assert that stored parameters for a given node are valid. 
+   * This may not hold when a minimization step removes a source table that 
+   * is used by a child, for example.
+   * 
+   * @param node the node in question
+   * @returns true if the parameters are valid for the node's topology. 
+   */ 
+  def paramsAreValidForNode(node: Node[DFOperator]): Boolean = {
+    //TODO: Implement this method
+    true
+  }
+
   def constructDFOCall(spec: JsValue, node: Node[DFOperator], in1: String, in2: String): String = {
     val opName = node.value.name
     val opSpec = spec \ opName
@@ -47,25 +60,53 @@ object UserImplSparkScala {
     }
     val opType = (opSpec \ "type").as[String]
     val parameters = (opSpec \ "parameters").as[JsObject]
-    val args = generateArguments(node, parameters, opType, in2)
+    
+    val reconstructFromParams = node.value.params.nonEmpty && paramsAreValidForNode(node)
+    val args = 
+      if (reconstructFromParams)
+        // TODO: do maps in scala preserve insertion order? Does it matter for reconstruction?
+        parameters.keys.toList.flatMap(node.value.params.get) // restore stored parameters
+      else
+        generateArguments(node, parameters, opType, in2)
+
+    // Save generated arguments back to DFOperator node.
+    if (!reconstructFromParams) {
+      node.value.params = parameters.keys.toList.zip(args).toMap
+    }
 
     // Construct the function call based on operation type
     opType match {
-      case "source" => constructSourceCall(node, spec, opName, opType, parameters, args)
+      case "source" => 
+        val result = constructSourceCall(node, spec, opName, opType, parameters, args)
+        node.value.params = Map.empty // tableName parameter not necessary, since this information is stored directly in DFOperator state.
+        result
       case "unary" if Array("groupBy").contains(opName) => s"$in1.$opName(${args.mkString(", ")}).${constructAggFollowup(node, spec, opName, opType, parameters, args)}"
       case _ => s"$in1.$opName(${args.mkString(", ")})"
     }
   }
 
   private def constructAggFollowup(node: Node[DFOperator], spec: JsValue, opName: String, opType: String, parameters: JsObject, args: List[String]): String = {
-    val (table, col) =  pickRandomColumnFromReachableSources(node)
+    
     val aggFuncs = Seq("sum", "avg", "count", "min", "max")
-    val chosenAggFunc = aggFuncs(scala.util.Random.nextInt(aggFuncs.length))
+
+    // Load parameters if already stored in node state, generate otherwise
+    val (chosenAggFunc, fullColName) = 
+      if (node.value.params.contains("aggFunc") && node.value.params.contains("aggCol"))
+        (node.value.params("aggFunc"), node.value.params("aggCol"))
+      else {
+        val (table, col) =  pickRandomColumnFromReachableSources(node)
+        (aggFuncs(scala.util.Random.nextInt(aggFuncs.length)), s"${table.identifier}.${col.name}")
+      }
 
     val useShortcut = chosenAggFunc == "sum" || chosenAggFunc == "avg"
 
-    val fullColName = s"${table.identifier}.${col.name}"
     val aggCol = s"""$chosenAggFunc("$fullColName")"""
+
+    // Save selected function and column back to node state
+    node.value.params = node.value.params ++ Map(
+      "aggFunc" -> chosenAggFunc,
+      "aggCol" -> fullColName
+    )
 
     if (useShortcut) {
       s"""$chosenAggFunc("$fullColName")"""
