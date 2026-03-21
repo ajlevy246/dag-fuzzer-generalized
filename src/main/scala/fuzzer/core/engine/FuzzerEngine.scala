@@ -99,7 +99,13 @@ class FuzzerEngine(
 
   def constructDFG(dag: Graph[DFOperator], apiSpec: JsValue, tables: Seq[TableMetadata]): Graph[DFOperator] = {
 
-    val dfg = fillOperators(dag, apiSpec)
+    // Fill operators only if not yet present. 
+    // - i.e., this may be a deserialized dag
+    // val dfg = fillOperators(dag, apiSpec)
+    val dfg = if (dag.nodes.exists(_.value.name == null))
+      fillOperators(dag, apiSpec)
+    else
+      dag
     dfg.computeReachabilityFromSources()
 
     val zipped = dfg.getSourceNodes.sortBy(_.value.id).zip(tables)
@@ -539,7 +545,7 @@ class FuzzerEngine(
             val dfgFileName = outFileName.stripSuffix(config.outExt) + ".dfg.json"
             val dfgFile = new File(resultSubDir, dfgFileName)
             val dfgWriter = new FileWriter(dfgFile)
-            dfgWriter.write(Json.prettyPrint(DFGSerializer.serialize(dfg)))
+            dfgWriter.write(Json.prettyPrint(DFGSerializer.serialize(dfg, resultType, config, sourceCode.preamble)))
             dfgWriter.close()
 
             if (stats.getGenerated % config.updateLiveStatsAfter == 0) {
