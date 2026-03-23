@@ -8,7 +8,9 @@ import fuzzer.core.graph.{DFOperator, Graph, Node}
  *  - Candidate 1: drop the L subtree and A, and replace with R
  *  - Candidate 2: drop the R subtree and A, and replace with L
  * 
- * Applies at any binary node.
+ * Applies at any binary node. The result of this rule application 
+ * should guarantee that the downstream branch from the error-causing 
+ * operation is a unary chain.
  */
 object SubtreePruningRule extends MinimizationRule{
   val name = "SubtreePruning"
@@ -36,6 +38,9 @@ object SubtreePruningRule extends MinimizationRule{
 
   /** Removes `binaryNode` and the `drop` subtree, wiring `keep` into
     * `binaryNode`'s children directly.
+    * 
+    * Note that this method pretty heavily depends on the tree structure of the graph.
+    * - Otherwise, the pruning for the new children and parent mappings would need to be more extensive.
     *
     * Returns None if the resulting graph would be invalid (e.g. no sink).
     */
@@ -47,15 +52,9 @@ object SubtreePruningRule extends MinimizationRule{
   ): Option[Graph[DFOperator]] = {
     println(s"\t- Pruning node ${binaryNode.id}: keep ${keep.id}, drop: ${drop.id}")
 
-    if (binaryNode.isSink) {
-      println("[WARNING] Subtree pruning for sink nodes not yet implemented.")
-      return None
-    }
-
     // Find nodes that need to be removed; remove pruned nodes.
     val childrenOfBinaryNode = graph.children.get(binaryNode.id).getOrElse(List.empty)
-    require(childrenOfBinaryNode.length == 1, "SubtreePruningRule failed. Expected an inverted binary tree...")
-    val newChildId = childrenOfBinaryNode.head
+    require(childrenOfBinaryNode.length < 2, "SubtreePruningRule failed. Expected an inverted binary tree...")
 
     val nodeIdsToPrune = binaryNode.id +: getAncestorsIdsFrom(graph, drop)
 
@@ -69,15 +68,53 @@ object SubtreePruningRule extends MinimizationRule{
     val prunedParents = graph.parents
       .filterNot { case (nodeId, _) => nodeIdsToPrune.contains(nodeId) }
     
+    // If the sink node was pruned, then we are done.
+    // - TODO: Verify this solution works.\
+    // -    Do we need to manually remove the 
+    // children of the new sink node?
+    // -    Is this the correct approach (to create a new sink).
+    if (binaryNode.isSink) {
+      print("\t-\tDrop node is sink.\n")
+      val newSink = new Node(
+        binaryNode.id,
+        keep.value
+      )
+      // Update the children and parent mappings to:
+      // - Replace the parents of newSink.id with the parents of keep.id, and then remove the entry for keep.id entirely.
+      // - Remove the entry for the children of keep.id, and replace the children of newSink.id with an empty list.
+      val updatedNodesMap = newNodesMap
+        .updated(newSink.id, newSink)
+        .filterNot { case (nodeId, _) => nodeId == keep.id }
+      val updatedChildren = prunedChildren
+        .filterNot { case (nodeId, _) => nodeId == keep.id }
+        .updated(newSink.id, List.empty)
+        .map { case (nodeId, children) => 
+          nodeId -> children.map(child => if (child == keep.id) newSink.id else child)  
+        }
+      val updatedParents = prunedParents
+        .filterNot { case (nodeId, _) => nodeId == keep.id }
+        .updated(newSink.id, prunedParents.get(keep.id).getOrElse(List.empty))
+      val candidate = Graph(
+        updatedNodesMap,
+        updatedChildren,
+        updatedParents
+      )
+      
+      candidate.nodes.foreach(_.graph = candidate)
+      return Some(candidate)
+    }
+
     // Update graph with new references for the updated child.
     // - Add `keep` as a parent of `newChild` node; remove `binaryNode`
     // - Add `newChild` as a child of `keep`; remove `binaryNode`
     val newParent = newNodesMap(keep.id)
+    val newChildId = childrenOfBinaryNode.head
     val newChild = newNodesMap(newChildId)
 
     //TODO: Verify that this solution works. Is it the best solution...?
     // - we clear the parameters of the child, to avoid situations where the child node 
-    // - reference a pruned node directly in a parameter. 
+    // reference a pruned node directly in a parameter. 
+    // - The child parameters are then re-rolled in the user codegen implementation.
     newChild.value.params = Map.empty[String, String]
 
     val updatedParents = prunedParents.updated(
@@ -95,7 +132,7 @@ object SubtreePruningRule extends MinimizationRule{
     val candidate = Graph(newNodesMap, updatedChildren, updatedParents)
     candidate.nodes.foreach(_.graph = candidate)
     
-    if (candidate.getSinkNodes.length != 1) return None
+    assert(candidate.getSinkNodes.length == 1, "Error pruning subtree: no sink nodes found.")
     Some(candidate)
   }
 
