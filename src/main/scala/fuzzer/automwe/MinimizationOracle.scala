@@ -59,7 +59,7 @@ class MinimizationOracle(
             if (res) {
               println("\t- Candidate is valid.")
             } else {
-              println("\t- Candidate is invalid.")
+              println(s"\t- Candidate is invalid: ${resultType}")
             }
             
             res
