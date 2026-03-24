@@ -89,7 +89,7 @@ class MinimizationOracle(
         GraphComplexity(
             nodeCount = candidate.nodes.length,
             sourceCount = candidate.getSourceNodes.length,
-            edgeCount = candidate.children.values.map(_.length).sum
+            numParams = candidate.nodes.map { node => node.value.params.size }.sum
         )
 
     private def resolveTableBindings(graph: Graph[DFOperator]): Seq[TableMetadata] = {
@@ -210,16 +210,11 @@ object MinimizationOracle {
 case class GraphComplexity(
     nodeCount: Int,
     sourceCount: Int,
-    edgeCount: Int
+    numParams: Int
 ) extends Ordered[GraphComplexity] {
     def compare(other: GraphComplexity): Int = {
-        // weights: nodes > sources > edges
-        val byNodes = this.nodeCount.compare(other.nodeCount)
-        if (byNodes != 0) return byNodes
-
-        val bySources = this.sourceCount.compare(other.sourceCount)
-        if (bySources != 0) return bySources
-
-        this.edgeCount.compare(other.edgeCount)
+        this.cost.compare(other.cost)
     }
+
+    def cost: Int = 3 * nodeCount + 2 * sourceCount + numParams
 }
