@@ -25,9 +25,13 @@ trait MinimizationRule {
       * @return a collection of candidate graphs
       */
     def apply(graph: Graph[DFOperator]): Seq[Graph[DFOperator]] = {
-        graph.nodes
+        println(s"[RULE APPLICATION] ${this.name}")
+        val res = graph.nodes
             .filter(node => isApplicable(node))
             .flatMap(node => applyAtNode(node))
+        println(s"[RULE APPLICATION] ${this.name} complete.\n\t- Returning ${res.length} candidates.")
+        res
+
     }
 
     /** Apply the rule to a given node.
@@ -37,7 +41,7 @@ trait MinimizationRule {
       */
     protected def applyAtNode(node: Node[DFOperator]): Option[Graph[DFOperator]]
 
-    /** Deep-copy a node.
+    /** Shallow-copy a node.
       * 
       * @param node
       * @return new node with same params
